@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <dirent.h>
 
 #define MAX_BUFFER 1024                        // max line buffer
 #define MAX_ARGS 64                            // max # args
@@ -13,7 +14,7 @@
 
 extern char **environ;
 
-char *getcurrdir() {
+char *getcurrdir(void) {
   char *s = (char *)malloc(MAX_BUFFER);
   int maxsize = MAX_BUFFER;
   while (!getcwd(s, maxsize)) {
@@ -46,7 +47,7 @@ int checkamp(char **args) {
   int i = 0;
   while (i < MAX_ARGS) {
     if (args[i]) {
-      if (!strcmp(args[i],"&")) {
+      if (!strcmp(args[i], "&")) {
         args[i] = NULL;
         return 1;
       }
@@ -59,16 +60,112 @@ int checkamp(char **args) {
   return 0;
 }
 
+void printprompt(void) {
+  /* the prompt is the current working directory */
+  /* write the curr directory path and a $ sign for the prompt */ 
+  char *prompt;
+  char *currpath = getcurrdir();
+  prompt = (char *)malloc(strlen(currpath)+sizeof("$ "));
+  strcpy(prompt, currpath);
+  strcat(prompt, "$ ");
+  fputs(prompt, stdout);
+}
+
 int getfnames(char **args, char **infname, char **outfname) {
 
   return 0;
 }
 
+void cd(char *dir) {
+  if (dir) { // if we gave cd an argument, then change to that directory
+    int ret = chdir(dir);
+    if (ret == 0) { // if we successfully changed the directory, update PWD
+      char *val = (char *)malloc(strlen(getcurrdir())+strlen("PWD=")); // this should not be freed
+      strcpy(val, "PWD="); // create the string for PWD
+      strcat(val, getcurrdir());
+      putenv(val); // set the PWD environment variable
+      return;
+    }
+    printf("cd: error: the directory you provided does not exist\n");
+    return;
+  }
+  // else, just print out the current working directory
+  printf("%s\n", getcurrdir());
+}
+
+void dir2(char *d) {
+  struct dirent **filelist = {0};
+  int fcount = -1;
+  char *directory;
+  if (d) {
+    directory = d;
+  }
+  else {
+    directory = ".";
+  }
+  fcount = scandir(directory, &filelist, 0, alphasort);
+  if (fcount < 0) {
+    printf("dir: error accessing the specified directory\n");
+    return;
+  }
+  int i = 0;
+  for (i=0; i<fcount; ++i) {
+    printf("%s\n", filelist[i]->d_name);
+    free(filelist[i]);
+  }
+  free(filelist);
+}
+
+void dir(char *d) {
+  char *cmd = "ls -al";
+  if (d) {
+    char *s = (char *)malloc(strlen(cmd)+strlen(d)+strlen(" "));
+    strcpy(s, cmd);
+    strcat(s, " ");
+    strcat(s, d);
+    system(s);
+    free(s);
+    return;
+  }
+  system(cmd);
+}
+
+void help(void) {
+  char *cmd = "more -d readme";
+  system(cmd);
+}
+
+void shellpause(void) {
+  char *cmd = "read -r key";
+  system(cmd);
+}
+
+void env(char **e) {
+  char **env = e; // we need to introduce the temporary variable
+  // env so that we don't modify the global variable environ
+          // this is so that when we call environ again, it still works
+  while (*env) {
+    printf("%s\n",*env++);
+  }
+}
+
+void echo(char **s) {
+  int i = 1;
+  if (s[i]) {
+    printf(s[i]);
+  }
+  while (s[i]) {
+    ++i;
+    printf(" ");
+    printf(s[i]);
+  }
+  printf("\n");
+}
+
 int main(int argc, char **argv) {
-  char buf[MAX_BUFFER];                      // line buffer
-  char *args[MAX_ARGS];                     // pointers to arg strings
-  char **arg;                               // working pointer thru args
-  char *prompt;                    // shell prompt
+  char buf[MAX_BUFFER]; // line buffer
+  char *args[MAX_ARGS]; // pointers to arg strings
+  char **arg; // working pointer thru args
 
 /* keep reading input until "quit" command or eof of redirected input */
 
@@ -78,82 +175,51 @@ int main(int argc, char **argv) {
 // default value is 1 because usually you want sequential execution
 // assume this for every new line input
     int waitflag = 1;
-
 // default value is 0 because you don't assume redirection until you find it
     int redirectflag = 0;
 
-    /* the prompt is the current working directory */
-    /* write the curr directory path and a $ sign for the prompt */
-    char *currpath = getcurrdir();
-    prompt = (char *)malloc(strlen(currpath)+sizeof("$ "));
-    strcpy(prompt, currpath);
-    strcat(prompt, "$ ");
-    fputs(prompt, stdout);                // write prompt
+    printprompt(); // print the prompt for the shell
+
     if (fgets(buf, MAX_BUFFER, stdin)) { // read a line
-
-/* tokenize the input into args array */
-
-/* strtok(buf,sep) gives the first token every time. to get the
- * rest of the tokens, use a while loop strtok(NULL,sep) */
       arg = args;
-      *arg++ = strtok(buf,SEPARATORS);   // tokenize input
-      while ((*arg++ = strtok(NULL,SEPARATORS))); // last entry will be NULL 
+      *arg++ = strtok(buf, SEPARATORS); // get the first token of the input
+      while ((*arg++ = strtok(NULL, SEPARATORS))); // read the rest of the line
 
       if (args[0]) { // if there's anything there
         if (checkamp(args)) {
           waitflag = 0;
         }
-/* check for internal/external command */
-        if (!strcmp(args[0],"clear")) { // "clear" command
-          system("clear");
-          /* system(clear) is equiv to sh -c clear */
-          /* exec() does NOT return to the calling function */
-          continue;
-        }
-        if (!strcmp(args[0],"clr")) {
+        if (!strcmp(args[0], "clr")) {
           system("clear");
           continue;
         }
-        if (!strcmp(args[0],"dir")) {
-          //char cmd[][] = {"ls", "-al"};
-          /*
-          if (args[1]) { // if we gave dir an argument
-            char *s;
-            s = (char *)malloc(strlen(cmd)+strlen(args[1])+1);
-            strcpy(s,cmd);
-            strcat(s,args[1]);
-            system(s);
-            free(s);
-          }
-          */
-          // else we just execute the default
-          //system(cmd);
-          forkcmd(args, waitflag);
+        if (!strcmp(args[0], "dir")) {
+          dir(args[1]);
           continue;
         }
-        if (!strcmp(args[0],"environ")) {
-          char **env = environ; // we need to introduce the temporary variable
-          // env so that we don't modify the global variable environ
-          // this is so that when we call environ again, it still works
-          while (*env) {
-            printf("%s\n",*env++);
-          }
+        if (!strcmp(args[0], "environ")) {
+          env(environ);
           continue;
         }
-        if (!strcmp(args[0],"quit"))   // "quit" command
-          break;                     // break out of 'while' loop
-
-        if (!strcmp(args[0],"cd")) {
-          if (args[1]) { // if the path does not exist, print the current working directory
-            chdir(args[1]);
-            char *val = (char *)malloc(strlen(args[1])+strlen("PWD=")); // this should not be freed
-            strcpy(val,"PWD=");
-            strcat(val,args[1]);
-            putenv(val);
-            continue;
-          }
-          printf("%s\n", getcurrdir());
+        if (!strcmp(args[0], "quit"))
+          break;
+        if (!strcmp(args[0], "cd")) {
+          cd(args[1]);
+          continue;
         }
+        if (!strcmp(args[0], "help")) {
+          help();
+          continue;
+        }
+        if (!strcmp(args[0], "pause")) {
+          shellpause();
+          continue;
+        }
+        if (!strcmp(args[0], "echo")) {
+          echo(args);
+          continue;
+        }
+        // if the item matches none of the internal commands, then run the generic call
         forkcmd(args, waitflag);
       }
     }
