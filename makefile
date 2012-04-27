@@ -1,12 +1,13 @@
 CC = gcc
 CFLAGS = -Wall -g
 
-BINARIES = strtokeg
+BINARIES = myshell
+SOURCE = myshell.c
 
 .PHONY: all clean
 
 all:
-	$(CC) strtokeg.c -o strtokeg $(CFLAGS)
+	$(CC) $(SOURCE) -o $(BINARIES) $(CFLAGS)
 
 clean:
-	-rm -f $(BINARIES)
+	rm -f $(BINARIES)
