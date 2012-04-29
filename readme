@@ -1,1 +1,321 @@
-This is the user manual.
+
+===============================================================================
+
+                     A Simple UNIX Shell in C - User Manual
+
+===============================================================================
+
+                    COMP3520 Assignment 1 - Semester 1, 2012
+                                Tianyu Pu
+                                310182212
+                         tipu8072@uni.sydney.edu.au
+
+CONTENTS
+ 1. Quick-Start Guide - how to start the shell
+ 2. Welcome to the Force - the basics
+ 3. Look Around You - the environment of the shell
+ 4. Taking Over the World (Maybe) - I/O redirection demystified
+ 5. You Can Run While I Do Something Else - background execution
+ 6. Further Reading - the possibilities are endless!
+ 7. Builtin Commands Reference
+
+
+===============================================================================
+SECTION 1 - QUICK-START GUIDE
+===============================================================================
+"A journey of a thousand miles begins with one step." - Sun Tzu, The Art of War
+
+
+Welcome to the user manual for this simple UNIX shell, written in C! This guide
+assumes that you can use a keyboard and have a basic proficiency in written
+English. (Some previous experience with computers would be helpful, too.) Let's 
+get started straight away so you can proceed to the next section
+to experiment and learn as you follow this guide.
+
++-----------------------------------------------------------------------------+
+| FACTBOX #1:                                                                 |
+| A computer consists of objects called "files". Files are a way of storing   |
+| data. Files can have many different types, called "formats", and can be     |
+| used by a wide range of programs depending on what the file contains.       |
+|                                                                             |
+| Folders are used to group files into one place, for more convenient and     |
+| organised access.                                                           |
+|                                                                             |
+| To view the contents of a folder (also called a "directory"), type "ls"     |
+| (without the quotes) into a terminal window. To change into a folder, type  |
+| "cd" (again, no quotes) followed by the folder's name. To move into the     |
+| parent folder, type "cd .." (two periods).                                  |
+|                                                                             |
+| To get you familiar with this, let's try running our simple shell.          |
++-----------------------------------------------------------------------------+
+
+To run this shell:
+ 1. Open up a new Terminal window.
+ 2. Use a combination of the "ls" and "cd" commands you just learned to
+    navigate to the folder containing the shell program file.
+ 3. Once you're there, type "./myshell" (no quotes) at the prompt to run the 
+    shell.
+
+Once you've done that, congratulations! You're ready to move on to the next
+section. Remember the "cd" and "ls" commands you've just learned - they are a
+staple for all UNIX users and you will find yourself using them much more in
+the future!
+
+===============================================================================
+SECTION 2 - WELCOME TO THE FORCE
+===============================================================================
+"May the Force be with you." - Various characters from Star Wars
+
+
+So hopefully you're reading this after you've managed to run the shell from the
+terminal for the first time. Great work! The first thing you'll notice is that
+the shell you just ran...doesn't do anything. What?! Can that be right?
+
+In actual fact, it's simply waiting for you to input a command at the blinking
+cursor. A few things to take note of:
+ * Every time it prompts you for a command, it will always tell you the folder
+   (or directory) that you are currently in.
+ * This folder path will always be followed by a $ sign and a space. You can
+   type anywhere after that, when the prompt waits for input.
+
+Before we go into more depth about some cool things that the shell can do, a
+quick word about this shell implementation: a number of commands are builtin
+to this shell, but most of the commands you can give it are sent to the default
+UNIX shell program (usually bash - the Bourne Again SHell). This will become
+more apparent as we learn more commands that we can do.
+
++-----------------------------------------------------------------------------+
+| FACTBOX #2:                                                                 |
+| A command is a line of text that you type into the shell prompt which is    |
+| picked up by the shell, interpreted and executed to perform some action(s). |
+| Generally, the structure of a command goes like this:                       |
+| <program name> <arguments>                                                  |
+| We shall see later that there are extensions to this syntax, but we won't   |
+| worry about them just yet. For example, the "cd" command you learned in the |
+| previous section is of the above form. In this case, the program name is    |
+| "cd" and the argument (only 1 argument in this case) is the folder name.    |
+| Of course, different programs will take different arguments - and some will |
+| also take arguments in the form of flags. Don't worry too much about trying |
+| to remember all the programs and all their flags and arguments - everything |
+| is well-documented for you and I :)                                         |
++-----------------------------------------------------------------------------+
+
+Now, let's look at a couple of handy commands that you can always get some use
+out of. I'll list them by their program name, and describe it briefly. I'll
+also indicate if it's supported internally by this shell. (If they are not, you
+can still try them out - bash will handle it for you.)
+ * ps (not supported) - view the active processes that are running. If you type
+   this into the shell, you can see that the shell itself (myshell) is running.
+ * environ (supported) - view all the attributes that define the "environment"
+   for the current shell. The standard UNIX command is "env" but it's been
+   implemented as "environ" in this shell. They both do the same thing. More
+   about environment-related stuff in section 4.
+ * man (not supported) - lookup the documentation for something you are
+   interested in. Typically, you'd give man an argument, such as "man bash". 
+   (Check it out for some detailed info about the standard UNIX shell!) If it
+   can't find what you are looking for, it will tell you nicely.
+ * dir (supported) - this is essentially the same as "ls", one of the first
+   commands you learned. bash also has this command - it can be used
+   interchangeably with ls. (Though if you're lazy, ls is one character less to
+   type...)
+ * clr (supported) - in bash, "clear" is the equivalent. Type this at the
+   prompt if your screen is cluttered and you want something clean to look at.
+   It clears everything on the screen and writes a line for the prompt.
+ * echo (supported) - exactly the same in this shell and the bash shell. It will
+   repeat back to you the arguments that you gave it. So "echo blah blah blah"
+   will give you "blah blah blah" on the screen.
+ * less (not supported) - give it an argument that is a path to a filename. It
+   will display the filename in a clean window, which you can scroll through
+   and read at your own leisure. Press "q" at any time while in "less" to exit
+   back to the shell.
+
+When you feel you're comfortable with using the shell, move on to the next
+section, where you'll learn a bit more about the environment of the shell.
+
+===============================================================================
+SECTION 3 - LOOK AROUND YOU
+===============================================================================
+"Life moves pretty fast. If you don't stop and look around once in a while, 
+you could miss it." - Ferris, Ferris Bueller's Day Off
+
+
+The UNIX environment is based on the philosophy that "the power of a system 
+comes more from the relationships among programs than from the programs 
+themselves". At a high level, the environment consists of a large number of
+variables that can be set by various different programs and by the user. All
+programs can access these so-called "environment variables" and can alter their
+behaviour based on the values contained in these variables. In our shell, we
+offer functionality to view the variables and their values.
+
+A few common environment variables explained:
+ * PATH - this consists of a number of file paths that the shell will search
+   for executable programs in. For example, if I simply typed "ls" into the
+   shell, where does the system go to find an executable called "ls"? It will
+   search all the folers listed in the PATH environment variable to find it.
+   If it can't find a executable with a certain name in the PATH variable, then
+   the executable of course will not be run.
+ * HOME - this is the full path to the current user's home directory, typically
+   /home/<username>.
+ * PWD - this is the full path to the current working directory that we are in.
+   This could be anywhere in the filesystem, as long as the place exists.
+ * SHELL - this is the full path of the shell for the current environment,
+   which is usually /bin/bash.
+
+Environment variables can be named as the programmer needs, following some
+basic syntax rules. They can be accessed as long as you know what the name of
+the variable is.
+
+===============================================================================
+SECTION 4 - TAKING OVER THE WORLD (MAYBE)
+===============================================================================
+"You don't have to be a brain surgeon to operate on the brain." - The Narrator, 
+Look Around You
+
+
+Now that you know a bit more about UNIX, the commands and the environment. What
+next?
+
+Welcome to section 4 - where we talk about controlling where the input and 
+output go. That's right - it's possible to change where your shell gets its
+input and where it sends its output. How is that useful, you may ask? Well, for
+example, you may want to save the list of environment variables produced by
+environ into a text file. How would you typically go about doing this? Maybe
+selecting everything on the screen, copying it, opening a blank file, pasting
+the text and then saving the new file. Rather bothersome if you had to do this
+over and over, wouldn't you think?
+
++-----------------------------------------------------------------------------+
+| FACTBOX #3:                                                                 |
+| Not really a factbox, but:                                                  |
+| if a human has to do the same actions over and over and over again, a       |
+| computer could probably do them more accurately and a lot faster.           |
++-----------------------------------------------------------------------------+
+
+Similarly, if a program I was using called for a file with many lines of input,
+I would need to either manually enter in the input line by line, or copy and
+paste. What if I need to run this program many times for an experiment? As you
+can see, there must be a better way to do input and output (known as I/O) in
+UNIX. And thankfully, as we shall see, there is.
+
++-----------------------------------------------------------------------------+
+| FACTBOX #4:                                                                 |
+| I/O redirection is the term used when we want to (yep, you guessed it)      |
+| redirect our input, output, or both in a single command. Typically, input   |
+| in the shell is done through what is called "standard input" or "stdin" for |
+| short, and program output is usually written to "standard output" or        |
+| "stdout". An example of when we might want to redirect one or both of these |
+| is if we wanted to pass input to a program from a file, except that the     |
+| program typically only takes stdin input, and then we wanted to save its    |
+| output to a file, instead of having the shell print them out onto the       |
+| screen.                                                                     |
+|                                                                             |
+| To redirect stdin by using a file, use the following syntax:                |
+| < <filename>                                                                |
+| For example, <program> < someinputfile                                      |
+| This tells the shell to run the <program> (whatever it's called, doesn't    |
+| matter for the purposes of our explanation) to look for input from a file   |
+| called "someinputfile" instead of from stdin. So if the program read input  |
+| from stdin it would get its input from the file instead. Neat and clean.    |
+|                                                                             |
+| To redirect stdout, use ">" (without quotes) instead of "<" in the above    |
+| syntax. This creates the file if it doesn't exist, but be careful if it     |
+| does - using a single ">" will cause the file to be wiped as soon as you    |
+| execute the command! To append to the end of a file instead, use ">>"       |
+| as you would "<" or ">".                                                    |
+|                                                                             |
+| Finally, it also doesn't make sense to have more than one of each type of   |
+| redirection operator (input and output) appear in one command - think about |
+| it! Why might this be the case?                                             |
++-----------------------------------------------------------------------------+
+
+Once you think you get the hang of what the factbox said - have a go! The best
+way to learn is to try things and see what happens. Don't worry, the system
+will be fine - I think ;) 
+
+Try creating your own files through the output operator, and then "less"-ing 
+those output files to see if what they contain is what you expect.
+
+===============================================================================
+SECTION 5 - YOU CAN RUN WHILE I DO SOMETHING ELSE
+===============================================================================
+"Information and communications technology unlocks the value of time, allowing 
+and enabling multi-tasking, multi-channels, multi-this and multi-that." - Li Ka
+Shing
+
+
+Sometimes you'd like to run the command you just typed in the background. Maybe
+it's working on a large file and has a lot of processing, so waiting for it
+might take some time. What do you do? Background execution to the rescue!
+
+Background execution allows you to run a command in the background while still
+letting you work on more commands in the foreground (ie, the shell prompt).
+This is great if you just want to let the computer churn a large chunk of data
+and not have to sit there and wait for it, especially if it takes minutes.
+
++-----------------------------------------------------------------------------+
+| FACTBOX #5:                                                                 |
+| To run a command in the background, end your command with "&". Too easy!    |
+|                                                                             |
+| This is standard syntax in both the simple shell and in the bash shell. The |
+| bash shell can also suspend your running program even after it's started    |
+| running - just press Ctrl-Z to send it to the background. (This is not      |
+| supported in this shell because it requires signal handling, which is not   |
+| done currently.)                                                            |
+| After you've suspended a process, use "ps" to view the process in the       |
+| process table.                                                              |
+|                                                                             |
+| Note that it doesn't make sense for some commands to run in the background  |
+| - for instance, commands such as less, cd, and echo.                        |
++-----------------------------------------------------------------------------+
+
+A common example is to run a program called "sleep" in the background. To do
+this, type "sleep 10" at the prompt. Notice that the shell does nothing for
+about 10 seconds. Now try "sleep 10 &", making sure to put the & at the end 
+(separate it from the other arguments with a space). Can you see that the shell
+asked you for another command straight away? That's because it's running the
+sleep program in the background, as you can see if you type "ps". 
+
+===============================================================================
+SECTION 6 - FURTHER READING
+===============================================================================
+"A capacity and taste for reading gives access to whatever has already been 
+discovered by others." - Abraham Lincoln
+
+
+UNIX is a huge system, with much to offer in terms of the practice and
+philosophy of coding. Check out these Internet resources for to start your
+investigation:
+ * www.unix.org
+ * www.ee.surrey.ac.uk/Teaching/Unix/
+ * http://computing.fnal.gov/unixatfermilab/html/cmdconcp.html (more advanced)
+ * http://sc.tamu.edu/help/general/unix/unix.html
+
+===============================================================================
+SECTION 7 - BUILTIN COMMANDS REFERENCE
+===============================================================================
+"Information is not knowledge." - Albert Einstein
+
+
+This section is a reference for the builtin commands and covers their
+functionality.
+ * cd - changes the current working directory to the argument specified. If no
+   argument given, print the current directory. If the given directory doesn't
+   exist, report an error. This command also modifies the PWD environment
+   variable through a putenv(3) call.
+ * clr - clears the screen. Calls system("clear"), so functions the same as the
+   bash command.
+ * dir - two versions implemented (see source), the version currently used in
+   the shell is simply a "ls -al" command. The second implementation does not
+   offer as much detail as "ls -al" can. If the directory does not exist, ls
+   reports an error.
+ * environ - prints all the environment strings to the screen. Same as using
+   "env".
+ * echo - prints all arguments passed to it, additional whitespace removed.
+   However, unlike the standard echo, this does not display the contents of
+   environment variables using syntax like $PATH.
+ * help - executes "more" on this file.
+ * pause - runs the bash executable "read". The program does not do anything,
+   and the user can enter input but upon press <Enter> the program will resume
+   again.
+ * quit - exits the shell. Typically "exit" or "logout" in bash.
+
