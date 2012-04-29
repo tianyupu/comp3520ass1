@@ -1,5 +1,3 @@
-/* #define _GNU_SOURCE 1 */
-
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,11 +67,32 @@ void printprompt(void) {
   strcpy(prompt, currpath);
   strcat(prompt, "$ ");
   fputs(prompt, stdout);
+  free(currpath);
 }
 
 int getfnames(char **args, char **infname, char **outfname) {
-
-  return 0;
+  int i;
+  for (i=0; i<MAX_ARGS; ++i) {
+    if (args[i]) {
+      if (!strcmp(args[i], "<")) {
+        *infname = (char *)malloc(strlen(args[i+1]));
+        strcpy(*infname, args[i+1]);
+        continue;
+      }
+      if (!strcmp(args[i], ">")) {
+        *outfname = (char *)malloc(strlen(args[i+1]));
+        strcpy(*outfname, args[i+1]);
+        continue;
+      }
+    }
+    else {
+      break;
+    }
+  }
+  if (*infname == NULL && *outfname == NULL) {
+    return 0;
+  }
+  return 1;
 }
 
 void cd(char *dir) {
@@ -90,7 +109,9 @@ void cd(char *dir) {
     return;
   }
   // else, just print out the current working directory
-  printf("%s\n", getcurrdir());
+  char *currdir = getcurrdir();
+  printf("%s\n", currdir);
+  free(currdir);
 }
 
 void dir2(char *d) {
@@ -143,7 +164,7 @@ void shellpause(void) {
 void env(char **e) {
   char **env = e; // we need to introduce the temporary variable
   // env so that we don't modify the global variable environ
-          // this is so that when we call environ again, it still works
+  // this is so that when we call environ again, it still works
   while (*env) {
     printf("%s\n",*env++);
   }
@@ -162,11 +183,27 @@ void echo(char **s) {
   printf("\n");
 }
 
+char **remapio(char **args, char **in, char**out) {
+  int i;
+  char **newargs = (char **)malloc(sizeof(char *)*MAX_ARGS);
+  for (i=0; i<MAX_ARGS; ++i) {
+    if (args[i]) {
+      if (!strcmp(args[i], "<") || !strcmp(args[i], ">")) {
+        break;
+      }
+      newargs[i] = args[i];
+    }
+    else {
+      break;
+    }
+  }
+  return newargs;
+}
+
 int main(int argc, char **argv) {
   char buf[MAX_BUFFER]; // line buffer
   char *args[MAX_ARGS]; // pointers to arg strings
   char **arg; // working pointer thru args
-
 /* keep reading input until "quit" command or eof of redirected input */
 
   while (!feof(stdin)) { 
@@ -180,7 +217,11 @@ int main(int argc, char **argv) {
 
     printprompt(); // print the prompt for the shell
 
-    if (fgets(buf, MAX_BUFFER, stdin)) { // read a line
+    // placeholders for i/o redirection
+    char *infile = NULL;
+    char *outfile = NULL;
+
+    if (fgets(buf, MAX_BUFFER, stdin)) { // read a line into buf
       arg = args;
       *arg++ = strtok(buf, SEPARATORS); // get the first token of the input
       while ((*arg++ = strtok(NULL, SEPARATORS))); // read the rest of the line
@@ -188,6 +229,11 @@ int main(int argc, char **argv) {
       if (args[0]) { // if there's anything there
         if (checkamp(args)) {
           waitflag = 0;
+        }
+        if (getfnames(args, &infile, &outfile)) { // either 1 or both files have been set
+          redirectflag = 1;
+          printf("infile: %s\n", infile);
+          printf("outfile: %s\n", outfile);
         }
         if (!strcmp(args[0], "clr")) {
           system("clear");
