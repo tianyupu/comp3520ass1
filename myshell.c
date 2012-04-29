@@ -5,39 +5,107 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define MAX_BUFFER 1024                        // max line buffer
 #define MAX_ARGS 64                            // max # args
 #define SEPARATORS " \t\n"                     // token sparators
+#define OUTPUT_TRUNCATE 1
+#define OUTPUT_APPEND 2
 
 extern char **environ;
 
 char *getcurrdir(void) {
-  char *s = (char *)malloc(MAX_BUFFER);
+  char *s = (char *)malloc(sizeof(char)*MAX_BUFFER);
   int maxsize = MAX_BUFFER;
   while (!getcwd(s, maxsize)) {
     free(s);
     maxsize = maxsize*2;
-    s = (char *)malloc(maxsize);
+    s = (char *)malloc(sizeof(char)*maxsize);
   }
   return s;
 }
 
-void forkcmd(char **args, int waitflag) {
-  int pid = fork();
+void truncargs(char **args) {
+  int i;
+  int set_null = 0;
+//  char **newargs = (char **)malloc(sizeof(char *)*MAX_ARGS);
+  for (i=0; i<MAX_ARGS; ++i) {
+    if (args[i]) {
+      if (set_null == 1) {
+        args[i] = NULL;
+        continue;
+      }
+      if (!strcmp(args[i], "<") || !strcmp(args[i], ">") || !strcmp(args[i], ">>")) {
+        set_null = 1;
+        args[i] = NULL;
+//        break;
+      }
+//      newargs[i] = (char *)malloc(strlen(args[i])+1);
+//      strcpy(newargs[i], args[i]);
+    }
+    else 
+      break;
+  }
+//  return newargs;
+}
+
+void forkcmd(char **args, int waitflag, char *in, char *out, int outputflag) {
+  int pid;
   int status;
-  switch (pid) {
+  int in_fd, out_fd;
+       if (in || out) { // if we have at least one kind of redirection
+        if (in) { // if there's a file we want to use as input
+          if (!(access(in, F_OK) == 0)) { // if the file doesn't exist
+            printf("input file does not exist\n");
+            exit(-1);
+          }
+          if (!(access(in, R_OK) == 0)) { // if the file cannot be read
+            printf("cannot read input file\n");
+            exit(-1);
+          }
+          in_fd = open(in, O_RDONLY);
+        }
+        if (out) { // there's a file we want to use as an output destination
+          if (access(out, F_OK) == 0) {
+            if (!(access(out, W_OK) == 0)) { // if the file exists but we can't write to it
+              printf("cannot write to output: permission denied\n");
+              exit(-1);
+            }
+          }
+          // replace stdout with the appropriate file descriptor depending on the mode
+          if (outputflag == OUTPUT_TRUNCATE) {
+            out_fd = open(out, O_CREAT | O_RDWR | O_TRUNC, S_IRWXU);
+          }
+          if (outputflag == OUTPUT_APPEND) {
+            out_fd = open(out, O_APPEND | O_RDWR | O_CREAT, S_IRWXU);
+         }
+        }
+//        char **newargs = truncargs(args);
+//        args = newargs;
+        truncargs(args);
+      }
+ switch (pid = fork()) {
     case -1:
-      printf("fork-error\n");
+      printf("an error occurred while attempting to create a child process. exiting.\n");
       exit(-1);
-    case 0: // successful fork
+    case 0: // successful fork, inside child process
+      if (in) {
+        dup2(in_fd, STDIN_FILENO);
+      }
+      if (out) {
+        dup2(out_fd, STDOUT_FILENO);
+      }
       execvp(args[0], args);
-      printf("exec-error\n"); // if it executes this, then there's an error
+      printf("there was an error executing your command.\n"); // if it executes this, then there's an error
       exit(-1);
     default:
       if (waitflag) {
         waitpid(pid, &status, WUNTRACED);
       }
+      close(in_fd);
+      close(out_fd);
   }
 }
 
@@ -70,7 +138,7 @@ void printprompt(void) {
   free(currpath);
 }
 
-int getfnames(char **args, char **infname, char **outfname) {
+int getfnames(char **args, char **infname, char **outfname, int *outmode) {
   int i;
   for (i=0; i<MAX_ARGS; ++i) {
     if (args[i]) {
@@ -79,9 +147,15 @@ int getfnames(char **args, char **infname, char **outfname) {
         strcpy(*infname, args[i+1]);
         continue;
       }
-      if (!strcmp(args[i], ">")) {
+      if (!strcmp(args[i], ">") || !strcmp(args[i], ">>")) {
         *outfname = (char *)malloc(strlen(args[i+1]));
         strcpy(*outfname, args[i+1]);
+        if (!strcmp(args[i], ">")) {
+          *outmode = OUTPUT_TRUNCATE;
+        }
+        else {
+          *outmode = OUTPUT_APPEND;
+        }
         continue;
       }
     }
@@ -99,7 +173,7 @@ void cd(char *dir) {
   if (dir) { // if we gave cd an argument, then change to that directory
     int ret = chdir(dir);
     if (ret == 0) { // if we successfully changed the directory, update PWD
-      char *val = (char *)malloc(strlen(getcurrdir())+strlen("PWD=")); // this should not be freed
+      char *val = (char *)malloc(strlen(getcurrdir())+sizeof("PWD=")); // this should not be freed
       strcpy(val, "PWD="); // create the string for PWD
       strcat(val, getcurrdir());
       putenv(val); // set the PWD environment variable
@@ -183,23 +257,6 @@ void echo(char **s) {
   printf("\n");
 }
 
-char **remapio(char **args, char **in, char**out) {
-  int i;
-  char **newargs = (char **)malloc(sizeof(char *)*MAX_ARGS);
-  for (i=0; i<MAX_ARGS; ++i) {
-    if (args[i]) {
-      if (!strcmp(args[i], "<") || !strcmp(args[i], ">")) {
-        break;
-      }
-      newargs[i] = args[i];
-    }
-    else {
-      break;
-    }
-  }
-  return newargs;
-}
-
 int main(int argc, char **argv) {
   char buf[MAX_BUFFER]; // line buffer
   char *args[MAX_ARGS]; // pointers to arg strings
@@ -212,8 +269,7 @@ int main(int argc, char **argv) {
 // default value is 1 because usually you want sequential execution
 // assume this for every new line input
     int waitflag = 1;
-// default value is 0 because you don't assume redirection until you find it
-    int redirectflag = 0;
+    int outputflag = 0;
 
     printprompt(); // print the prompt for the shell
 
@@ -230,11 +286,9 @@ int main(int argc, char **argv) {
         if (checkamp(args)) {
           waitflag = 0;
         }
-        if (getfnames(args, &infile, &outfile)) { // either 1 or both files have been set
-          redirectflag = 1;
-          printf("infile: %s\n", infile);
-          printf("outfile: %s\n", outfile);
-        }
+        getfnames(args, &infile, &outfile, &outputflag);
+        printf("infile: %s\n", infile);
+        printf("outfile: %s\n", outfile);
         if (!strcmp(args[0], "clr")) {
           system("clear");
           continue;
@@ -266,7 +320,7 @@ int main(int argc, char **argv) {
           continue;
         }
         // if the item matches none of the internal commands, then run the generic call
-        forkcmd(args, waitflag);
+        forkcmd(args, waitflag, infile, outfile, outputflag);
       }
     }
   }
